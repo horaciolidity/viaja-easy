@@ -1,0 +1,80 @@
+/* Custom utility classes */
+.gradient-bg {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(260, 70%, 60%) 100%);
+}
+
+.gradient-primary {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
+}
+.text-gradient-primary {
+  @apply bg-clip-text text-transparent gradient-primary;
+}
+
+
+.gradient-trami-blue {
+  background: linear-gradient(135deg, hsl(var(--trami-blue)) 0%, hsl(var(--trami-blue) / 0.7) 100%);
+}
+
+.gradient-success {
+  background: linear-gradient(135deg, hsl(145, 63%, 49%) 0%, hsl(150, 60%, 40%) 100%);
+}
+
+.gradient-warning {
+  background: linear-gradient(135deg, hsl(38, 92%, 50%) 0%, hsl(35, 85%, 45%) 100%);
+}
+
+.glass-effect {
+  background: hsla(var(--card) / 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid hsla(var(--border) / 0.2);
+}
+
+.map-container-bg { /* Renamed from map-container to avoid conflict if used elsewhere */
+  background: linear-gradient(45deg, hsl(210, 100%, 97%) 0%, hsl(210, 100%, 92%) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.map-container-bg::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    radial-gradient(circle at 20% 20%, hsla(var(--primary) / 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, hsla(145, 63%, 49% / 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 40% 60%, hsla(260, 70%, 60% / 0.05) 0%, transparent 50%);
+}
+
+.price-highlight {
+  background: linear-gradient(135deg, hsl(145, 63%, 49%) 0%, hsl(150, 60%, 40%) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.notification-dot {
+  background: linear-gradient(135deg, hsl(0, 84.2%, 60.2%) 0%, hsl(0, 70%, 50%) 100%);
+  animation: pulse 2.2s infinite;
+}
+
+.route-line {
+  background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(260, 70%, 60%) 100%);
+  height: 4px;
+  border-radius: 2px;
+  position: relative;
+}
+
+.route-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 30%;
+  background: hsla(0, 0%, 100%, 0.4);
+  border-radius: 2px;
+  animation: progress 2.5s ease-in-out infinite;
+}

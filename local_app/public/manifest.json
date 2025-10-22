@@ -1,0 +1,23 @@
+{
+  "name": "ViajaFácil",
+  "short_name": "ViajaFácil",
+  "start_url": ".",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1DC9C9",
+  "description": "La mejor app de transporte en tiempo real. Solicita tu viaje, conecta con conductores y viaja seguro con ViajaFácil.",
+  "icons": [
+    {
+      "src": "https://storage.googleapis.com/hostinger-horizons-assets-prod/b39e7321-a8b2-479d-ac5b-e21b810ac4d9/a319dd2f382da4be3c0fac5ce0d849c5.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://storage.googleapis.com/hostinger-horizons-assets-prod/b39e7321-a8b2-479d-ac5b-e21b810ac4d9/a319dd2f382da4be3c0fac5ce0d849c5.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "gcm_sender_id": "103953800507"
+}

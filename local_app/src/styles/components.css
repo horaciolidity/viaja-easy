@@ -1,0 +1,106 @@
+/* Styles for specific components like cards, buttons not covered by shadcn, etc. */
+.ride-card {
+  background: hsl(var(--card));
+  border-radius: var(--radius);
+  box-shadow: 0 8px 25px hsla(var(--foreground) / 0.08);
+  border: 1px solid hsla(var(--border) / 0.5);
+}
+
+.driver-avatar {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(260, 70%, 60%) 100%);
+}
+
+.rating-stars {
+  color: hsl(45, 100%, 50%); /* Gold */
+}
+
+.chat-bubble {
+  max-width: 80%;
+  word-wrap: break-word;
+  padding: 10px 14px;
+  border-radius: 18px;
+}
+
+.chat-bubble.sent {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(230, 80%, 60%) 100%);
+  color: hsl(var(--primary-foreground));
+  margin-left: auto;
+  border-bottom-right-radius: 6px;
+}
+
+.chat-bubble.received {
+  background: hsl(220, 20%, 92%);
+  color: hsl(var(--foreground));
+  border-bottom-left-radius: 6px;
+}
+
+.payment-card {
+  background: linear-gradient(135deg, hsl(220, 30%, 20%) 0%, hsl(220, 25%, 30%) 100%);
+  color: hsl(var(--primary-foreground));
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+
+.payment-card::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(circle, hsla(0, 0%, 100%, 0.08) 0%, transparent 70%);
+}
+
+.trip-timeline {
+  position: relative;
+}
+
+.trip-timeline::before {
+  content: '';
+  position: absolute;
+  left: 15px; /* Adjust based on dot size */
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, hsl(var(--primary)) 0%, hsl(260, 70%, 60%) 100%);
+  border-radius: 1.5px;
+}
+
+.timeline-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(var(--background));
+  border: 3.5px solid hsl(var(--primary));
+  position: relative;
+  z-index: 1;
+  margin-left: 8.5px;
+}
+
+/* TRAMI Specific component styles */
+.trami-action-card {
+  @apply bg-white p-3 rounded-xl shadow-md flex flex-col items-center justify-center text-center cursor-pointer transition-all hover:shadow-lg hover:scale-105;
+}
+.trami-action-card-icon-wrapper {
+  @apply w-12 h-12 mb-2 rounded-lg flex items-center justify-center bg-primary/10;
+}
+.trami-action-card-icon {
+  @apply w-6 h-6 text-primary;
+}
+.trami-action-card-title {
+  @apply text-xs font-semibold text-gray-700;
+}
+
+.trami-feature-card {
+  @apply bg-white p-4 rounded-xl shadow-md text-center cursor-pointer transition-all hover:shadow-lg;
+}
+.trami-feature-card-image {
+  @apply w-full h-20 object-contain mb-2 rounded-md;
+}
+.trami-feature-card-title {
+  @apply text-sm font-bold text-gray-800 mb-1;
+}
+.trami-feature-card-description {
+  @apply text-xs text-gray-600;
+}

@@ -1,0 +1,175 @@
+[
+  {
+    "paths": [
+      "face_landmark_68_net-shard1.bin"
+    ],
+    "weights": [
+      {
+        "name": "face_landmark_68_net/conv1/filters",
+        "shape": [
+          3,
+          3,
+          32,
+          32
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv1/biases",
+        "shape": [
+          32
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv2/filters",
+        "shape": [
+          3,
+          3,
+          32,
+          64
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv2/biases",
+        "shape": [
+          64
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv3/filters",
+        "shape": [
+          3,
+          3,
+          64,
+          64
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv3/biases",
+        "shape": [
+          64
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv4/filters",
+        "shape": [
+          3,
+          3,
+          64,
+          64
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv4/biases",
+        "shape": [
+          64
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv5/filters",
+        "shape": [
+          3,
+          3,
+          64,
+          128
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv5/biases",
+        "shape": [
+          128
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv6/filters",
+        "shape": [
+          3,
+          3,
+          128,
+          128
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv6/biases",
+        "shape": [
+          128
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv7/filters",
+        "shape": [
+          3,
+          3,
+          128,
+          256
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv7/biases",
+        "shape": [
+          256
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv8/filters",
+        "shape": [
+          3,
+          3,
+          256,
+          256
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/conv8/biases",
+        "shape": [
+          256
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/fc1/weights",
+        "shape": [
+          2304,
+          1024
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/fc1/biases",
+        "shape": [
+          1024
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/fc2/weights",
+        "shape": [
+          1024,
+          136
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "face_landmark_68_net/fc2/biases",
+        "shape": [
+          136
+        ],
+        "dtype": "float32"
+      }
+    ]
+  }
+]

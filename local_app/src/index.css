@@ -1,0 +1,11 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+@import './styles/base.css';
+@import './styles/components.css';
+@import './styles/utilities.css';
+@import './styles/animations.css';
+@import './styles/admin.css';
+@import './styles/mobile.css';
+@import './styles/appSpecific.css'; /* Para estilos específicos de TRAMI que no encajan en otro lado */
