@@ -14,12 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  UploadCloud,
-  ArrowLeft,
-  Loader2,
-  AlertTriangle,
-} from "lucide-react";
+import { UploadCloud, ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import FileUpload from "@/components/FileUpload";
 import { Separator } from "@/components/ui/separator";
 import { useDriverVerification } from "@/hooks/useDriverVerification";
@@ -37,26 +32,27 @@ const DocumentUploadPage = () => {
 
   const isDriver = profile?.user_type === "driver";
 
-  // === Cargar documentos existentes ===
+  /* ---------------- Fetch Existing Documents ---------------- */
   const fetchExistingDocuments = useCallback(async () => {
-    if (!user) return;
+    if (!user?.id) return;
     setPageLoading(true);
     try {
       const docsData = await getUserDocuments(user.id);
       if (docsData) {
         const docsMap = {};
         const allDocs = [...(docsData.driver || []), ...(docsData.passenger || [])];
-        allDocs.forEach((doc) => {
+        for (const doc of allDocs) {
           if (
             !docsMap[doc.doc_type] ||
             new Date(doc.created_at) > new Date(docsMap[doc.doc_type].created_at)
           ) {
             docsMap[doc.doc_type] = doc;
           }
-        });
+        }
         setExistingDocs(docsMap);
       }
-    } catch {
+    } catch (err) {
+      console.error("Error al cargar documentos:", err);
       toast({
         title: "Error",
         description: "No se pudieron cargar los documentos existentes.",
@@ -71,14 +67,13 @@ const DocumentUploadPage = () => {
     fetchExistingDocuments();
   }, [fetchExistingDocuments]);
 
-  // === Definiciones de documentos ===
+  /* ---------------- Document Definitions ---------------- */
   const personalDocs = [
     { id: "dni_front", label: "DNI (Frente)", required: true, capture: "environment", accept: "image/jpeg,image/png" },
     { id: "dni_back", label: "DNI (Dorso)", required: true, capture: "environment", accept: "image/jpeg,image/png" },
     { id: "selfie_dni", label: "Selfie con DNI", required: true, helpText: "Sostené tu DNI al lado de tu cara.", capture: "user", accept: "image/jpeg,image/png" },
   ];
 
-  // 🔹 Certificado separado en PDF + Foto para mejorar UX en celular
   const driverProfessionalDocs = [
     { id: "license", label: "Licencia de Conducir Profesional", required: true, capture: "environment", accept: "image/jpeg,image/png" },
     {
@@ -86,7 +81,6 @@ const DocumentUploadPage = () => {
       label: "Certificado de Antecedentes (PDF)",
       required: false,
       helpText: "Subí el PDF oficial. Si tu teléfono no lo muestra, buscá en la app 'Archivos'.",
-      capture: undefined,                 // ⚠️ importante para que abra 'Archivos'
       accept: "application/pdf",
       maxSizeMB: 10,
     },
@@ -95,7 +89,7 @@ const DocumentUploadPage = () => {
       label: "Certificado de Antecedentes (Foto)",
       required: false,
       helpText: "Si no tenés el PDF, sacale una foto clara y legible.",
-      capture: "environment",             // abre cámara/galería
+      capture: "environment",
       accept: "image/jpeg,image/png",
       maxSizeMB: 10,
     },
@@ -111,34 +105,32 @@ const DocumentUploadPage = () => {
     { id: "vehicle_photo_front", label: "Foto Frontal del Vehículo", required: true, helpText: "Asegurate de que la patente sea visible.", capture: "environment", accept: "image/jpeg,image/png" },
   ];
 
-  // === Handlers ===
+  /* ---------------- Handlers ---------------- */
   const handleFileChange = (docId, file) => {
     setFiles((prev) => ({ ...prev, [docId]: file || null }));
   };
 
   const handleSubmit = async () => {
     setIsLoading(true);
-
     const allDocs = isDriver
       ? [...personalDocs, ...driverProfessionalDocs, ...vehicleDocs, ...vehiclePhotos]
       : personalDocs;
 
-    const requiredButMissing = allDocs.filter(
+    const missingRequired = allDocs.filter(
       (doc) => doc.required && !files[doc.id] && !existingDocs[doc.id]
     );
 
-    if (requiredButMissing.length > 0) {
+    if (missingRequired.length > 0) {
       toast({
         title: "Faltan documentos obligatorios",
-        description: `Subí: ${requiredButMissing.map((d) => d.label).join(", ")}`,
+        description: `Subí: ${missingRequired.map((d) => d.label).join(", ")}`,
         variant: "destructive",
       });
       setIsLoading(false);
       return;
     }
 
-    const hasNewFiles = Object.values(files).some(Boolean);
-    if (!hasNewFiles) {
+    if (!Object.values(files).some(Boolean)) {
       toast({
         title: "No hay cambios",
         description: "No subiste ningún documento nuevo.",
@@ -163,10 +155,11 @@ const DocumentUploadPage = () => {
       } else {
         throw new Error(result?.message || "Ocurrió un error al subir los documentos.");
       }
-    } catch (error) {
+    } catch (err) {
+      console.error("Error al subir documentos:", err);
       toast({
         title: "Error al subir",
-        description: error?.message || "Reintentá en unos segundos.",
+        description: err?.message || "Reintentá en unos segundos.",
         variant: "destructive",
       });
     } finally {
@@ -181,15 +174,15 @@ const DocumentUploadPage = () => {
   if (authLoading || pageLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // === Render helper ===
+  /* ---------------- Render Helper ---------------- */
   const renderDocSection = (title, docs) => (
     <div className="space-y-6">
-      <h3 className="text-xl font-semibold text-gray-800 border-b pb-2">{title}</h3>
+      <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100 border-b pb-2">{title}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
         {docs.map((doc) => (
           <FileUpload
@@ -212,11 +205,11 @@ const DocumentUploadPage = () => {
     </div>
   );
 
-  // === Render principal ===
+  /* ---------------- Render Principal ---------------- */
   return (
     <div
       className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4 sm:p-6"
-      onKeyDown={(e) => e.key === "Enter" && e.preventDefault()} // bloquea Enter global
+      onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
     >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -226,11 +219,15 @@ const DocumentUploadPage = () => {
       >
         <Card className="shadow-2xl">
           <CardHeader>
-            <CardTitle className="text-2xl sm:text-3xl font-bold text-center">Verificación de Documentos</CardTitle>
+            <CardTitle className="text-2xl sm:text-3xl font-bold text-center">
+              Verificación de Documentos
+            </CardTitle>
             <CardDescription className="text-center max-w-2xl mx-auto">
-              Subí los siguientes documentos. Los campos con <span className="text-red-500 font-bold">*</span> son obligatorios.
+              Subí los siguientes documentos. Los campos con{" "}
+              <span className="text-red-500 font-bold">*</span> son obligatorios.
             </CardDescription>
           </CardHeader>
+
           <CardContent className="space-y-8">
             {isDriver && (
               <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
@@ -268,8 +265,8 @@ const DocumentUploadPage = () => {
               </Button>
 
               <Button
-                type="button"           // ⚠️ clave: no es submit
-                onClick={handleSubmit}  // llamamos manualmente
+                type="button"
+                onClick={handleSubmit}
                 disabled={isLoading || Object.values(files).every((f) => !f)}
                 className="w-full sm:w-auto"
               >

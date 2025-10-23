@@ -1,71 +1,67 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/customSupabaseClient';
 
-const NetworkStatusContext = createContext();
+const NetworkStatusContext = createContext(null);
 
 export const useNetworkStatus = () => {
-  const context = useContext(NetworkStatusContext);
-  if (!context) {
-    throw new Error('useNetworkStatus debe usarse dentro de NetworkStatusProvider');
-  }
-  return context;
+  const ctx = useContext(NetworkStatusContext);
+  if (!ctx) throw new Error('useNetworkStatus debe usarse dentro de NetworkStatusProvider');
+  return ctx;
 };
 
+/* ============================================================
+   NetworkStatusProvider — monitorea red y conexión Supabase
+   ============================================================ */
 export const NetworkStatusProvider = ({ children }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isChecking, setIsChecking] = useState(true);
-  const checkTimeoutRef = useRef(null);
-  const isCheckingRef = useRef(false);
-  const lastChecked = useRef(0);
 
-  const checkSupabaseConnection = useCallback(async (force = false) => {
-    const now = Date.now();
-    if (!force && now - lastChecked.current < 10000) {
-      return isOnline;
-    }
-    lastChecked.current = now;
+  const lastCheckRef = useRef(0);
+  const checkingRef = useRef(false);
 
-    if (isCheckingRef.current) {
-      return isOnline;
-    }
-    isCheckingRef.current = true;
-    setIsChecking(true);
-    
-    if (!navigator.onLine) {
-      setIsOnline(false);
-      setIsChecking(false);
-      isCheckingRef.current = false;
-      return false;
-    }
+  /* -------------------- 🔍 Verificar conexión Supabase -------------------- */
+  const checkSupabaseConnection = useCallback(
+    async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastCheckRef.current < 10_000) return isOnline;
 
-    try {
-      const { data, error } = await supabase.rpc('get_my_user_type');
-      
-      const isNetworkError = error && error.message.toLowerCase().includes('failed to fetch');
-      const isAuthError = error && (error.code === '401' || error.message.toLowerCase().includes('invalid jwt'));
+      lastCheckRef.current = now;
+      if (checkingRef.current) return isOnline;
 
-      const currentlyOnline = !isNetworkError || isAuthError;
-      
-      setIsOnline(currentlyOnline);
-      if (!currentlyOnline) {
-          console.warn("NetworkStatus: Supabase check failed, assuming offline.", error?.message);
+      checkingRef.current = true;
+      setIsChecking(true);
+
+      if (!navigator.onLine) {
+        setIsOnline(false);
+        setIsChecking(false);
+        checkingRef.current = false;
+        return false;
       }
-      return currentlyOnline;
-    } catch (e) {
-      console.error("NetworkStatus: Supabase check threw an exception, assuming offline.", e);
-      setIsOnline(false);
-      return false;
-    } finally {
-      setIsChecking(false);
-      isCheckingRef.current = false;
-    }
-  }, [isOnline]);
 
+      try {
+        // 🧠 Hacemos un ping seguro a Supabase (sin depender del schema)
+        const { error } = await supabase.from('profiles').select('id').limit(1);
+        const success = !error;
+        setIsOnline(success);
+        if (!success) console.warn('🔌 Supabase desconectado:', error.message);
+        return success;
+      } catch (err) {
+        console.error('❌ Error comprobando conexión Supabase:', err);
+        setIsOnline(false);
+        return false;
+      } finally {
+        setIsChecking(false);
+        checkingRef.current = false;
+      }
+    },
+    [isOnline]
+  );
+
+  /* -------------------- ⚙️ Listeners del navegador -------------------- */
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
-      checkTimeoutRef.current = setTimeout(() => checkSupabaseConnection(true), 500);
+      setTimeout(() => checkSupabaseConnection(true), 1000);
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -73,22 +69,28 @@ export const NetworkStatusProvider = ({ children }) => {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
+
+    // Primer chequeo al cargar
     checkSupabaseConnection(true);
 
+    // Revalidar cada 30 segundos
     const intervalId = setInterval(() => {
       checkSupabaseConnection();
-    }, 30000); 
+    }, 30_000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       clearInterval(intervalId);
-      if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
     };
   }, [checkSupabaseConnection]);
 
-  const value = { isOnline, isChecking, checkSupabaseConnection };
+  /* -------------------- 🧩 Valor del contexto -------------------- */
+  const value = {
+    isOnline,
+    isChecking,
+    checkSupabaseConnection,
+  };
 
   return (
     <NetworkStatusContext.Provider value={value}>

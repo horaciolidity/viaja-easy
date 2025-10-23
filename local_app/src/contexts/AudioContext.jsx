@@ -4,16 +4,15 @@ import { toast } from '@/components/ui/use-toast';
 const AudioContext = createContext(null);
 
 export const useAudio = () => {
-  const context = useContext(AudioContext);
-  if (!context) {
-    throw new Error('useAudio debe usarse dentro de un AudioProvider');
-  }
-  return context;
+  const ctx = useContext(AudioContext);
+  if (!ctx) throw new Error('useAudio debe usarse dentro de un AudioProvider');
+  return ctx;
 };
 
+/* ---------------------- 🎵 Definición de sonidos ---------------------- */
 const soundFiles = {
   viaje_nuevo: '/sounds/viaje_nuevo.mp3',
-  mensaje: '/sounds/mensaje.mp3',
+  message: '/sounds/mensaje.mp3',
   alert: '/sounds/alert.mp3',
   success: '/sounds/success.mp3',
   notification: '/sounds/notification.mp3',
@@ -25,50 +24,56 @@ const soundFiles = {
 
 const loadedSounds = {};
 
-const loadSound = (key, src) => {
-  return new Promise((resolve, reject) => {
+/* ---------------------- 🎧 Carga de sonidos ---------------------- */
+const loadSound = (key, src) =>
+  new Promise((resolve, reject) => {
     const audio = new Audio(src);
     audio.preload = 'auto';
     audio.addEventListener('canplaythrough', () => {
       loadedSounds[key] = audio;
+      if (import.meta.env.DEV) console.log(`✅ Sonido cargado: ${key}`);
       resolve();
     });
     audio.addEventListener('error', (e) => {
       const error = e.target.error;
-      console.error(`Audio Fallido: No se pudo cargar o decodificar el sonido '${key}' desde '${src}'. Código: ${error?.code}, Mensaje: ${error?.message}`);
+      console.error(
+        `Audio Fallido: '${key}' desde '${src}'. Código: ${error?.code}, Mensaje: ${error?.message}`
+      );
       reject(new Error(`Failed to load ${key}`));
     });
   });
-};
 
-Object.entries(soundFiles).forEach(([key, src]) => {
-  loadSound(key, src).catch(e => console.error(e));
-});
+Object.entries(soundFiles).forEach(([key, src]) =>
+  loadSound(key, src).catch((e) => console.error(e))
+);
 
+/* ---------------------- 🔊 Reproducción ---------------------- */
 export const playNotificationSound = (soundKey = 'default') => {
   const soundTemplate = loadedSounds[soundKey] || loadedSounds.default;
   if (soundTemplate) {
     const soundToPlay = soundTemplate.cloneNode();
-    soundToPlay.play().catch(error => {
-      console.error(`Error al reproducir el sonido '${soundKey}':`, error);
-    });
+    soundToPlay
+      .play()
+      .catch((err) => console.error(`Error al reproducir '${soundKey}':`, err));
   } else {
-    console.error(`El sonido con la clave "${soundKey}" no se encontró o no está cargado.`);
+    console.warn(`⚠️ El sonido '${soundKey}' no está cargado.`);
   }
 };
 
-
+/* ---------------------- 🎚️ Contexto principal ---------------------- */
 export const AudioProvider = ({ children }) => {
   const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
-  
+
   const unlockAudio = useCallback(() => {
-    if (!isAudioUnlocked) {
-      setIsAudioUnlocked(true);
-      // Play a silent sound to unlock audio context on iOS/some browsers
-      const silentSound = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU2LjM2LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6aW1vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21v////////AAAAAExhdmM1Ni40MQAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6aW1vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21v////////AAAAAExhdmM1Ni40MQAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6aW1vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21vbW9tb21v////////AAAAAExhdmM1Ni40MQ');
-      silentSound.play().catch(() => {});
-      console.log("AudioContext desbloqueado por interacción del usuario.");
-    }
+    if (isAudioUnlocked) return;
+    setIsAudioUnlocked(true);
+
+    // Desbloquea audio context en iOS y navegadores móviles
+    const silent = new Audio(
+      'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU2LjM2LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6aW1vbW9tb21vbW9tb21vbW9tb21vb21vb21vb21vb21vb21vb21vb21vb21vb////////AAAAAExhdmM1Ni40MQ=='
+    );
+    silent.play().catch(() => {});
+    if (import.meta.env.DEV) console.log('🔓 AudioContext desbloqueado.');
   }, [isAudioUnlocked]);
 
   useEffect(() => {
@@ -81,17 +86,21 @@ export const AudioProvider = ({ children }) => {
     };
   }, [unlockAudio]);
 
-  const playSound = useCallback((soundKey = 'default') => {
-    if (!isAudioUnlocked) {
-      toast({
-        title: "Audio bloqueado",
-        description: "Haz clic en cualquier lugar de la página para habilitar los sonidos de notificación.",
-        variant: "destructive",
-      });
-      return;
-    }
-    playNotificationSound(soundKey);
-  }, [isAudioUnlocked]);
+  const playSound = useCallback(
+    (soundKey = 'default') => {
+      if (!isAudioUnlocked) {
+        toast({
+          title: 'Audio bloqueado',
+          description:
+            'Haz clic en cualquier lugar de la página para habilitar los sonidos de notificación.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      playNotificationSound(soundKey);
+    },
+    [isAudioUnlocked]
+  );
 
   const value = { playSound, isAudioUnlocked, unlockAudio };
 

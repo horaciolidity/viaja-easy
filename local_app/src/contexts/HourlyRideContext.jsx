@@ -1,242 +1,292 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-    import {
-        getHourlyRideSettings,
-        createHourlyRideRequest as createHourlyRideRequestService,
-        getDriverAndAvailableHourlyBookings,
-        getPassengerHourlyBookings as getPassengerHourlyBookingsService,
-        cancelBooking as cancelBookingService,
-        updateHourlyBookingStatus as updateHourlyBookingStatusService
-    } from '@/services/hourlyRideService';
-    import { useAuth } from './AuthContext';
-    import { useSettings } from './SettingsContext';
-    import { toast } from '@/components/ui/use-toast';
-    import { supabase } from '@/lib/supabaseClient';
-    import { useNotifications } from './NotificationContext';
+import {
+  getHourlyRideSettings,
+  createHourlyRideRequest as createHourlyRideRequestService,
+  getDriverAndAvailableHourlyBookings,
+  getPassengerHourlyBookings as getPassengerHourlyBookingsService,
+  cancelBooking as cancelBookingService,
+  updateHourlyBookingStatus as updateHourlyBookingStatusService,
+} from '@/services/hourlyRideService';
+import { useAuth } from './AuthContext';
+import { useSettings } from './SettingsContext';
+import { useNotifications } from './NotificationContext';
+import { toast } from '@/components/ui/use-toast';
+import { supabase } from '@/lib/customSupabaseClient';
 
-    const HourlyRideContext = createContext(null);
+const HourlyRideContext = createContext(null);
 
-    export const useHourlyRide = () => {
-        const context = useContext(HourlyRideContext);
-        if (!context) {
-            throw new Error('useHourlyRide debe usarse dentro de un HourlyRideProvider');
+export const useHourlyRide = () => {
+  const ctx = useContext(HourlyRideContext);
+  if (!ctx) throw new Error('useHourlyRide debe usarse dentro de HourlyRideProvider');
+  return ctx;
+};
+
+export const HourlyRideProvider = ({ children }) => {
+  const { user, profile } = useAuth();
+  const { settings, loading: loadingSettings } = useSettings();
+  const { sendNotification } = useNotifications();
+
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [driverBookings, setDriverBookings] = useState([]);
+  const [availableBookings, setAvailableBookings] = useState([]);
+  const [loadingDriverBookings, setLoadingDriverBookings] = useState(false);
+  const [passengerBookings, setPassengerBookings] = useState([]);
+  const [loadingPassengerBookings, setLoadingPassengerBookings] = useState(false);
+  const [hourlySettings, setHourlySettings] = useState(null);
+
+  /* ------------------------- ⚙️ Cargar configuración ------------------------- */
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const data = await getHourlyRideSettings();
+        setHourlySettings(data);
+      } catch (err) {
+        console.error('Error obteniendo configuración por hora:', err);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  /* ------------------------- 🧍 Crear reserva pasajero ------------------------- */
+  const createHourlyRideRequest = async (bookingData) => {
+    if (!user) {
+      toast({
+        title: 'Inicia sesión',
+        description: 'Debes iniciar sesión para reservar.',
+        variant: 'destructive',
+      });
+      return null;
+    }
+
+    setBookingLoading(true);
+    try {
+      const newBooking = await createHourlyRideRequestService({
+        ...bookingData,
+        passenger_id: user.id,
+        status: 'pending',
+      });
+
+      toast({
+        title: 'Reserva creada',
+        description: 'Tu viaje por hora ha sido solicitado. Buscando un conductor...',
+      });
+
+      setPassengerBookings((prev) => [newBooking, ...prev]);
+      return newBooking;
+    } catch (err) {
+      console.error('Error creando reserva:', err);
+      toast({
+        title: 'Error al reservar',
+        description: err.message || 'No se pudo crear la reserva. Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+      return null;
+    } finally {
+      setBookingLoading(false);
+    }
+  };
+
+  /* ------------------------- 🚗 Cargar reservas conductor ------------------------- */
+  const fetchDriverHourlyBookings = useCallback(async () => {
+    if (!user || profile?.user_type !== 'driver') return;
+    setLoadingDriverBookings(true);
+
+    try {
+      const { assigned, available } = await getDriverAndAvailableHourlyBookings(user.id);
+      setDriverBookings(assigned);
+      setAvailableBookings(available);
+    } catch (err) {
+      console.error('Error obteniendo reservas conductor:', err);
+      toast({
+        title: 'Error',
+        description: 'No se pudieron obtener las reservas por hora.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingDriverBookings(false);
+    }
+  }, [user, profile]);
+
+  /* ------------------------- 📲 Cargar reservas pasajero ------------------------- */
+  const fetchPassengerHourlyBookings = useCallback(async () => {
+    if (!user || profile?.user_type !== 'passenger') return;
+    setLoadingPassengerBookings(true);
+
+    try {
+      const data = await getPassengerHourlyBookingsService(user.id);
+      setPassengerBookings(data);
+    } catch (err) {
+      console.error('Error obteniendo reservas pasajero:', err);
+      toast({
+        title: 'Error',
+        description: 'No se pudieron cargar tus reservas.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingPassengerBookings(false);
+    }
+  }, [user, profile]);
+
+  /* ------------------------- 🔁 Actualización local ------------------------- */
+  const updateLocalBookingState = useCallback((updatedBooking) => {
+    setDriverBookings((prev) =>
+      prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b))
+    );
+    setPassengerBookings((prev) =>
+      prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b))
+    );
+  }, []);
+
+  /* ------------------------- ▶️ Iniciar viaje por hora ------------------------- */
+  const startHourlyRide = async (bookingId) => {
+    if (!user) return;
+
+    try {
+      const updatedBooking = await updateHourlyBookingStatusService(bookingId, 'in_progress', {
+        actual_start_time: new Date().toISOString(),
+      });
+
+      updateLocalBookingState(updatedBooking);
+      toast({ title: 'Viaje iniciado', description: '¡Buen viaje!' });
+
+      await sendNotification(updatedBooking.passenger_id, {
+        type: 'booking_in_progress',
+        title: '¡Tu viaje ha comenzado!',
+        body: 'Tu conductor ha iniciado el viaje por horas.',
+        payload: { bookingId: updatedBooking.id },
+      });
+    } catch (err) {
+      console.error('Error al iniciar viaje:', err);
+      toast({
+        title: 'Error',
+        description: err.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  /* ------------------------- ✅ Completar viaje ------------------------- */
+  const completeHourlyRide = async (booking) => {
+    if (!user) return;
+
+    try {
+      const updatedBooking = await updateHourlyBookingStatusService(booking.id, 'completed', {
+        actual_end_time: new Date().toISOString(),
+      });
+
+      updateLocalBookingState(updatedBooking);
+      toast({
+        title: 'Viaje completado',
+        description: 'El pago ha sido procesado a tu billetera.',
+      });
+
+      await sendNotification(updatedBooking.passenger_id, {
+        type: 'booking_completed',
+        title: 'Viaje finalizado',
+        body: 'Tu viaje por horas ha finalizado.',
+        payload: { bookingId: updatedBooking.id },
+      });
+    } catch (err) {
+      console.error('Error al completar viaje:', err);
+      toast({
+        title: 'Error',
+        description: err.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  /* ------------------------- ❌ Cancelar reserva ------------------------- */
+  const cancelBooking = async (bookingId) => {
+    if (!user) return false;
+
+    try {
+      await cancelBookingService(bookingId);
+      setPassengerBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, status: 'cancelled' } : b))
+      );
+      toast({
+        title: 'Reserva cancelada',
+        description: 'Tu reserva ha sido cancelada exitosamente.',
+      });
+      return true;
+    } catch (err) {
+      console.error('Error al cancelar reserva:', err);
+      toast({
+        title: 'Error',
+        description: err.message || 'No se pudo cancelar la reserva.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
+
+  /* ------------------------- 🔄 Escuchar actualizaciones realtime ------------------------- */
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`hourly-bookings:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'hourly_bookings' },
+        (payload) => {
+          const { eventType, new: newBooking, old: oldBooking } = payload;
+
+          if (eventType === 'INSERT' && profile?.user_type === 'driver' && !newBooking.driver_id) {
+            setAvailableBookings((prev) => [newBooking, ...prev.filter((b) => b.id !== newBooking.id)]);
+          }
+
+          if (eventType === 'UPDATE') {
+            updateLocalBookingState(newBooking);
+
+            if (!oldBooking.driver_id && newBooking.driver_id)
+              setAvailableBookings((prev) => prev.filter((b) => b.id !== newBooking.id));
+
+            if (
+              profile?.user_type === 'passenger' &&
+              newBooking.passenger_id === user.id &&
+              newBooking.status === 'cancelled' &&
+              oldBooking.status === 'pending'
+            ) {
+              toast({
+                title: 'Reserva expirada',
+                description: 'Tu reserva por hora fue cancelada por tiempo excedido.',
+              });
+            }
+          }
+
+          if (eventType === 'DELETE') {
+            setAvailableBookings((prev) => prev.filter((b) => b.id !== oldBooking.id));
+            setDriverBookings((prev) => prev.filter((b) => b.id !== oldBooking.id));
+            setPassengerBookings((prev) => prev.filter((b) => b.id !== oldBooking.id));
+          }
         }
-        return context;
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
+  }, [user, profile, updateLocalBookingState]);
 
-    export const HourlyRideProvider = ({ children }) => {
-        const { user, profile } = useAuth();
-        const { settings, loading: loadingSettings } = useSettings();
-        const { sendNotification } = useNotifications();
-        const [bookingLoading, setBookingLoading] = useState(false);
-        
-        const [driverBookings, setDriverBookings] = useState([]);
-        const [availableBookings, setAvailableBookings] = useState([]);
-        const [loadingDriverBookings, setLoadingDriverBookings] = useState(false);
+  /* ------------------------- 🧩 Contexto expuesto ------------------------- */
+  const value = {
+    settings: hourlySettings,
+    loadingSettings,
+    bookingLoading,
+    driverBookings,
+    availableBookings,
+    loadingDriverBookings,
+    fetchDriverHourlyBookings,
+    startHourlyRide,
+    completeHourlyRide,
+    passengerBookings,
+    loadingPassengerBookings,
+    fetchPassengerHourlyBookings,
+    createHourlyRideRequest,
+    cancelBooking,
+  };
 
-        const [passengerBookings, setPassengerBookings] = useState([]);
-        const [loadingPassengerBookings, setLoadingPassengerBookings] = useState(false);
-        const [hourlySettings, setHourlySettings] = useState(null);
-
-        useEffect(() => {
-          const fetchSettings = async () => {
-            const data = await getHourlyRideSettings();
-            setHourlySettings(data);
-          };
-          fetchSettings();
-        }, []);
-
-        const createHourlyRideRequest = async (bookingData) => {
-            if (!user) {
-                toast({ title: 'Error', description: 'Debes iniciar sesión para reservar.', variant: 'destructive' });
-                return null;
-            }
-            setBookingLoading(true);
-            try {
-                const newBooking = await createHourlyRideRequestService({
-                    ...bookingData,
-                    passenger_id: user.id,
-                    status: 'pending'
-                });
-                toast({
-                    title: '¡Reserva Exitosa!',
-                    description: 'Tu viaje por hora ha sido solicitado. Buscando un conductor...',
-                    className: 'bg-green-600 text-white'
-                });
-                setPassengerBookings(prev => [newBooking, ...prev]);
-                return newBooking;
-            } catch (error) {
-                toast({
-                    title: 'Error al Reservar',
-                    description: error.message || 'No se pudo crear la reserva. Inténtalo de nuevo.',
-                    variant: 'destructive',
-                });
-                return null;
-            } finally {
-                setBookingLoading(false);
-            }
-        };
-
-        const fetchDriverHourlyBookings = useCallback(async () => {
-            if (!user || profile?.user_type !== 'driver') return;
-            setLoadingDriverBookings(true);
-            try {
-                const { assigned, available } = await getDriverAndAvailableHourlyBookings(user.id);
-                setDriverBookings(assigned);
-                setAvailableBookings(available);
-            } catch (error) {
-                console.error("Error fetching driver hourly bookings:", error);
-                toast({
-                    title: "Error al cargar reservas",
-                    description: "No se pudieron obtener las reservas por hora.",
-                    variant: "destructive",
-                });
-            } finally {
-                setLoadingDriverBookings(false);
-            }
-        }, [user, profile]);
-        
-        const updateLocalBookingState = (updatedBooking) => {
-          setDriverBookings(prev => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
-          setPassengerBookings(prev => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
-        };
-
-        const startHourlyRide = async (bookingId) => {
-            if (!user) return;
-            try {
-                const updatedBooking = await updateHourlyBookingStatusService(bookingId, 'in_progress', { actual_start_time: new Date().toISOString() });
-                updateLocalBookingState(updatedBooking);
-                toast({ title: "Viaje Iniciado", description: "¡Buen viaje!", className: 'bg-blue-600 text-white' });
-                await sendNotification(updatedBooking.passenger_id, {
-                   type: 'booking_in_progress',
-                   title: '¡Tu viaje ha comenzado!', 
-                   body: 'Tu conductor ha iniciado el viaje por horas.',
-                   payload: { bookingId: updatedBooking.id } 
-                });
-            } catch (error) {
-                toast({ title: "Error al iniciar", description: error.message, variant: "destructive" });
-            }
-        };
-        
-        const completeHourlyRide = async (booking) => {
-            if (!user) return;
-            try {
-                const updatedBooking = await updateHourlyBookingStatusService(booking.id, 'completed', { 
-                    actual_end_time: new Date().toISOString()
-                });
-                
-                updateLocalBookingState(updatedBooking);
-                toast({ title: "Viaje Finalizado", description: "El pago ha sido procesado a tu billetera.", className: 'bg-green-600 text-white' });
-                await sendNotification(updatedBooking.passenger_id, { 
-                  type: 'booking_completed',
-                  title: '¡Viaje completado!', 
-                  body: 'Tu viaje por horas ha finalizado.',
-                  payload: { bookingId: updatedBooking.id }
-                });
-            } catch (error) {
-                toast({ title: "Error al finalizar", description: error.message, variant: "destructive" });
-            }
-        };
-
-        const fetchPassengerHourlyBookings = useCallback(async () => {
-            if (!user || profile?.user_type !== 'passenger') return;
-            setLoadingPassengerBookings(true);
-            try {
-                const data = await getPassengerHourlyBookingsService(user.id);
-                setPassengerBookings(data);
-            } catch (error) {
-                console.error("Error fetching passenger hourly bookings:", error);
-                toast({
-                    title: "Error al cargar tus reservas",
-                    description: "No se pudieron obtener tus reservas por hora.",
-                    variant: "destructive",
-                });
-            } finally {
-                setLoadingPassengerBookings(false);
-            }
-        }, [user, profile]);
-
-        const cancelBooking = async (bookingId) => {
-            if (!user) return false;
-            try {
-                const cancelledBooking = await cancelBookingService(bookingId);
-                toast({
-                    title: "Reserva Cancelada",
-                    description: "Tu reserva ha sido cancelada exitosamente.",
-                    className: 'bg-blue-600 text-white'
-                });
-                setPassengerBookings(prev => 
-                    prev.map(b => b.id === bookingId ? { ...b, status: 'cancelled' } : b)
-                );
-                return true;
-            } catch (error) {
-                toast({
-                    title: "Error al Cancelar",
-                    description: error.message,
-                    variant: "destructive"
-                });
-                return false;
-            }
-        };
-
-        useEffect(() => {
-            if (!user) return;
-
-            const channel = supabase.channel('hourly-bookings-channel')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'hourly_bookings' }, (payload) => {
-                    const { new: newBooking, old: oldBooking } = payload;
-                    
-                    if (payload.eventType === 'INSERT') {
-                        if (profile?.user_type === 'driver' && newBooking.status === 'pending' && newBooking.driver_id === null) {
-                            setAvailableBookings(prev => [newBooking, ...prev.filter(b => b.id !== newBooking.id)]);
-                        }
-                    }
-                    
-                    if (payload.eventType === 'UPDATE') {
-                        updateLocalBookingState(newBooking);
-
-                        if (oldBooking.driver_id === null && newBooking.driver_id !== null) {
-                            setAvailableBookings(prev => prev.filter(b => b.id !== newBooking.id));
-                        }
-                        
-                        if (profile?.user_type === 'passenger' && newBooking.passenger_id === user.id && newBooking.status === 'cancelled' && oldBooking.status === 'pending') {
-                             toast({ title: "Reserva Caducada", description: "Tu reserva por hora ha sido cancelada por exceso de tiempo." });
-                        }
-                    }
-                    
-                    if (payload.eventType === 'DELETE') {
-                         setAvailableBookings(prev => prev.filter(b => b.id !== oldBooking.id));
-                         setDriverBookings(prev => prev.filter(b => b.id !== oldBooking.id));
-                         setPassengerBookings(prev => prev.filter(b => b.id !== oldBooking.id));
-                    }
-                })
-                .subscribe();
-
-            return () => {
-                supabase.removeChannel(channel);
-            };
-        }, [user, profile]);
-
-
-        const value = {
-            settings: hourlySettings,
-            loadingSettings,
-            bookingLoading,
-            driverBookings,
-            availableBookings,
-            loadingDriverBookings,
-            fetchDriverHourlyBookings,
-            startHourlyRide,
-            completeHourlyRide,
-            passengerBookings,
-            loadingPassengerBookings,
-            fetchPassengerHourlyBookings,
-            createHourlyRideRequest,
-            cancelBooking,
-        };
-
-        return (
-            <HourlyRideContext.Provider value={value}>
-                {children}
-            </HourlyRideContext.Provider>
-        );
-    };
+  return <HourlyRideContext.Provider value={value}>{children}</HourlyRideContext.Provider>;
+};

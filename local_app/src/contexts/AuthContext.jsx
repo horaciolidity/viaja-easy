@@ -1,18 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
-import { NetworkErrorHandler } from '@/utils/errorHandler';
 import { toast } from '@/components/ui/use-toast';
-import { getProfile, updateProfile as updateProfileService } from '@/services/profileService';
-import { signUp as registerUser, signIn as loginUser, updateUserPassword as updatePasswordService } from '@/services/authService';
-import { getImpersonationSession } from '@/services/adminService';
 
 const AuthContext = createContext({});
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth debe usarse dentro de AuthProvider');
-  }
+  if (!context) throw new Error('useAuth debe usarse dentro de AuthProvider');
   return context;
 };
 
@@ -25,145 +19,161 @@ export const AuthProvider = ({ children }) => {
   const [impersonatedUser, setImpersonatedUser] = useState(null);
   const [adminSession, setAdminSession] = useState(null);
 
+  /* ============================
+     LOGOUT
+     ============================ */
   const logout = useCallback(async (options = {}) => {
     const { navigate, showToast = false, message, description } = options;
     setLoading(true);
     try {
-        const { error } = await supabase.auth.signOut();
-        if (error && !NetworkErrorHandler.isIgnoredAuthError(error)) {
-          console.warn("Error during logout, but will proceed:", error.message);
-        }
+      const { error } = await supabase.auth.signOut();
+      if (error) console.warn('Error during logout:', error.message);
     } catch (e) {
-      console.warn("Exception during logout, but will proceed:", e.message);
+      console.warn('Exception during logout:', e.message);
     } finally {
-        setUser(null);
-        setProfile(null);
-        setIsAdmin(false);
-        setIsImpersonating(false);
-        setImpersonatedUser(null);
-        localStorage.removeItem('adminSession');
-        setLoading(false);
-        if (showToast) {
-          toast({
-            title: message || "Sesión Cerrada",
-            description: description || "Has cerrado sesión correctamente.",
-          });
-        }
-        if(navigate) {
-            navigate('/login');
-        }
+      setUser(null);
+      setProfile(null);
+      setIsAdmin(false);
+      setIsImpersonating(false);
+      setImpersonatedUser(null);
+      localStorage.removeItem('adminSession');
+      setLoading(false);
+      if (showToast) {
+        toast({
+          title: message || 'Sesión cerrada',
+          description: description || 'Has cerrado sesión correctamente.',
+        });
+      }
+      if (navigate) navigate('/login');
     }
   }, []);
 
-  const handleSessionError = useCallback(async (error) => {
-      const isSessionError = error.message.includes('Session not found') || 
-                             error.message.includes('Auth session not found!') ||
-                             error.message.includes('JWT expired') ||
-                             error.message.includes('invalid JWT');
+  /* ============================
+     DETECCIÓN DE ERRORES DE SESIÓN
+     ============================ */
+  const handleSessionError = useCallback(
+    async (error) => {
+      if (!error?.message) return false;
+      const isSessionError =
+        error.message.includes('Session not found') ||
+        error.message.includes('Auth session not found!') ||
+        error.message.includes('JWT expired') ||
+        error.message.includes('invalid JWT');
+
       if (isSessionError) {
-          console.warn('Session error detected, logging out:', error.message);
-          await logout({ 
-              showToast: true, 
-              message: "Tu sesión ha expirado", 
-              description: "Por favor, inicia sesión de nuevo."
-          });
-          return true;
+        console.warn('Session error detected, logging out:', error.message);
+        await logout({
+          showToast: true,
+          message: 'Tu sesión ha expirado',
+          description: 'Por favor, inicia sesión de nuevo.',
+        });
+        return true;
       }
       return false;
-  }, [logout]);
+    },
+    [logout]
+  );
 
-
-  const fetchUserProfile = useCallback(async (userId) => {
-    if (!userId) {
+  /* ============================
+     PERFIL DE USUARIO
+     ============================ */
+  const fetchUserProfile = useCallback(
+    async (userId) => {
+      if (!userId) {
         setProfile(null);
         setIsAdmin(false);
         return;
-    };
-    try {
-      const userProfile = await getProfile(userId);
-      if (userProfile) {
-        setProfile(userProfile);
-        setIsAdmin(userProfile.user_type === 'admin' && !isImpersonating);
-        if (userProfile.status === 'suspended' || userProfile.accountBlocked) {
-            console.warn(`User account is suspended or blocked. Status: ${userProfile.status}, Blocked: ${userProfile.accountBlocked}`);
+      }
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setProfile(data);
+          setIsAdmin(data.user_type === 'admin' && !isImpersonating);
+          if (data.status === 'suspended' || data.accountBlocked) {
+            console.warn(`Cuenta bloqueada o suspendida: ${data.status}`);
+          }
+        } else {
+          setProfile(null);
+          setIsAdmin(false);
         }
-      } else {
-         setProfile(null);
-         setIsAdmin(false);
+      } catch (error) {
+        const handled = await handleSessionError(error);
+        if (!handled) console.error('Error al obtener perfil:', error.message);
+        setProfile(null);
+        setIsAdmin(false);
       }
-    } catch (error) {
-      const sessionErrorHandled = await handleSessionError(error);
-      if (!sessionErrorHandled) {
-          NetworkErrorHandler.handleError(error, 'obtención de perfil de usuario');
-      }
-      setProfile(null);
-      setIsAdmin(false);
-    }
-  }, [handleSessionError, isImpersonating]);
-  
+    },
+    [handleSessionError, isImpersonating]
+  );
+
   const refreshProfile = useCallback(async () => {
-    if(user?.id) {
-        await fetchUserProfile(user.id);
-    }
+    if (user?.id) await fetchUserProfile(user.id);
   }, [user, fetchUserProfile]);
 
+  /* ============================
+     SESIÓN ACTUAL + SUSCRIPCIÓN
+     ============================ */
   useEffect(() => {
     const checkUserSession = async () => {
-        setLoading(true);
-        const storedAdminSession = localStorage.getItem('adminSession');
+      setLoading(true);
+      const storedAdminSession = localStorage.getItem('adminSession');
+      if (storedAdminSession) {
+        setAdminSession(JSON.parse(storedAdminSession));
+        setIsImpersonating(true);
+      }
+
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error) await handleSessionError(error);
+
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        await fetchUserProfile(currentUser.id);
+
         if (storedAdminSession) {
-          setAdminSession(JSON.parse(storedAdminSession));
-          setIsImpersonating(true);
+          const adminData = JSON.parse(storedAdminSession);
+          if (currentUser.id !== adminData.user.id)
+            setImpersonatedUser({ email: currentUser.email });
+          else stopImpersonation();
         }
-
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-            console.error("Error getting session:", error.message);
-            await handleSessionError(error);
-        }
-
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-
-        if (currentUser) {
-            await fetchUserProfile(currentUser.id);
-            if (storedAdminSession) {
-              const adminSessionData = JSON.parse(storedAdminSession);
-              if (currentUser.id !== adminSessionData.user.id) {
-                setImpersonatedUser({ email: currentUser.email });
-              } else {
-                stopImpersonation();
-              }
-            }
-        } else {
-            setProfile(null);
-            setIsAdmin(false);
-        }
-        setLoading(false);
+      } else {
+        setProfile(null);
+        setIsAdmin(false);
+      }
+      setLoading(false);
     };
 
     checkUserSession();
 
-    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setLoading(true);
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        
-        if (currentUser) {
-            if (event === 'PASSWORD_RECOVERY') {
-            } else {
-                await fetchUserProfile(currentUser.id);
-            }
-        } else {
-            setProfile(null);
-            setIsAdmin(false);
-        }
-        setLoading(false);
-      }
-    );
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setLoading(true);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
 
+      if (currentUser) {
+        if (event !== 'PASSWORD_RECOVERY') await fetchUserProfile(currentUser.id);
+      } else {
+        setProfile(null);
+        setIsAdmin(false);
+      }
+      setLoading(false);
+    });
+
+    // Suscripción realtime al perfil
     let profileSubscription = null;
     if (user?.id) {
       profileSubscription = supabase
@@ -177,16 +187,15 @@ export const AuthProvider = ({ children }) => {
             filter: `id=eq.${user.id}`,
           },
           (payload) => {
-            const oldProfile = profile;
             const newProfile = payload.new;
             setProfile(newProfile);
             setIsAdmin(newProfile.user_type === 'admin' && !isImpersonating);
 
-            if (oldProfile && oldProfile.verified !== newProfile.verified && newProfile.verified) {
+            if (profile && !profile.verified && newProfile.verified) {
               toast({
-                title: "¡Cuenta Verificada! ✅",
-                description: "Tu cuenta ha sido verificada. ¡Ya puedes usar todas las funciones!",
-                className: "bg-green-500 text-white",
+                title: '¡Cuenta verificada! ✅',
+                description: 'Ya puedes usar todas las funciones.',
+                className: 'bg-green-500 text-white',
                 duration: 6000,
               });
             }
@@ -196,26 +205,33 @@ export const AuthProvider = ({ children }) => {
     }
 
     return () => {
-      authSubscription.unsubscribe();
-      if (profileSubscription) {
-        supabase.removeChannel(profileSubscription).catch(err => console.error("Error removing profile channel", err));
-      }
+      subscription.unsubscribe();
+      if (profileSubscription)
+        supabase
+          .removeChannel(profileSubscription)
+          .catch((err) => console.error('Error removing profile channel', err));
     };
   }, [fetchUserProfile, handleSessionError, isImpersonating]);
-  
-  const register = async (email, password, userData, invitationToken = null) => {
+
+  /* ============================
+     REGISTRO / LOGIN / PERFIL / CONTRASEÑA
+     ============================ */
+  const register = async (email, password, userData = {}) => {
     setLoading(true);
     try {
-      const { user } = await registerUser(email, password, userData, invitationToken);
-      if (user) {
-        toast({
-          title: "Registro Exitoso",
-          description: "Revisa tu email para confirmar tu cuenta.",
-        });
-        return { user };
-      }
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: userData },
+      });
+      if (error) throw error;
+      toast({
+        title: 'Registro exitoso',
+        description: 'Revisa tu email para confirmar tu cuenta.',
+      });
+      return data;
     } catch (error) {
-      NetworkErrorHandler.handleError(error.originalError || error, 'registro');
+      console.error('Error al registrar usuario:', error.message);
       throw error;
     } finally {
       setLoading(false);
@@ -225,23 +241,28 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      const data = await loginUser(email, password);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
       setUser(data.user);
       await fetchUserProfile(data.user.id);
       return data;
     } catch (error) {
+      console.error('Error al iniciar sesión:', error.message);
       throw error;
     } finally {
       setLoading(false);
     }
   };
-  
+
   const updatePassword = async (newPassword) => {
     setLoading(true);
     try {
-      await updatePasswordService(newPassword);
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      toast({ title: 'Contraseña actualizada' });
       return true;
     } catch (error) {
+      console.error('Error al actualizar contraseña:', error.message);
       throw error;
     } finally {
       setLoading(false);
@@ -249,36 +270,45 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateProfile = async (updates) => {
-    if (!user) throw new Error("Usuario no autenticado");
+    if (!user) throw new Error('Usuario no autenticado');
     try {
-      const updatedProfile = await updateProfileService(user.id, updates);
-      setProfile(updatedProfile);
-      return updatedProfile;
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      setProfile(data);
+      return data;
     } catch (error) {
+      console.error('Error actualizando perfil:', error.message);
       throw error;
     }
   };
 
+  /* ============================
+     IMPERSONACIÓN (ADMIN)
+     ============================ */
   const startImpersonation = async (userToImpersonate) => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("La sesión de administrador no es válida.");
+    if (!session) throw new Error('La sesión de administrador no es válida.');
 
     localStorage.setItem('adminSession', JSON.stringify(session));
     setAdminSession(session);
 
-    const newSessionData = await getImpersonationSession(userToImpersonate.id);
-    
-    const { error } = await supabase.auth.setSession({
-      access_token: newSessionData.access_token,
-      refresh_token: newSessionData.refresh_token,
-    });
+    // RPC o endpoint seguro que devuelva tokens de usuario impersonado
+    const { data, error } = await supabase.rpc('admin_impersonate_user', { p_user_id: userToImpersonate.id });
+    if (error) throw error;
 
-    if (error) {
+    const { access_token, refresh_token } = data;
+    const { error: setError } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (setError) {
       localStorage.removeItem('adminSession');
       setAdminSession(null);
-      throw new Error("No se pudo establecer la sesión de suplantación.");
+      throw new Error('No se pudo establecer la sesión de suplantación.');
     }
-    
+
     setIsImpersonating(true);
     setImpersonatedUser({ email: userToImpersonate.email });
     window.location.href = '/';
@@ -286,11 +316,8 @@ export const AuthProvider = ({ children }) => {
 
   const stopImpersonation = async () => {
     const storedAdminSession = JSON.parse(localStorage.getItem('adminSession'));
-    if (!storedAdminSession) {
-      logout();
-      return;
-    }
-    
+    if (!storedAdminSession) return logout();
+
     const { error } = await supabase.auth.setSession(storedAdminSession);
     localStorage.removeItem('adminSession');
     setIsImpersonating(false);
@@ -298,13 +325,16 @@ export const AuthProvider = ({ children }) => {
     setAdminSession(null);
 
     if (error) {
-      console.error("Error restoring admin session, logging out.", error);
+      console.error('Error restaurando sesión de admin:', error.message);
       logout();
     } else {
       window.location.href = '/admin';
     }
   };
 
+  /* ============================
+     VALORES DEL CONTEXTO
+     ============================ */
   const value = {
     user,
     profile,
@@ -323,9 +353,5 @@ export const AuthProvider = ({ children }) => {
     stopImpersonation,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

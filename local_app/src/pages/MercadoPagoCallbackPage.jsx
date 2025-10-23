@@ -10,19 +10,22 @@ import { useMercadoPagoAuth } from '@/hooks/useMercadoPagoAuth';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
 
-const isApprovedStatus = (s) =>
-  ['approved', 'accredited', 'succeeded', 'authorized'].includes(String(s || '').toLowerCase());
+/* ------------------- Helpers ------------------- */
 const norm = (s) => String(s || '').toLowerCase();
+const isApprovedStatus = (s) =>
+  ['approved', 'accredited', 'succeeded', 'authorized'].includes(norm(s));
 const isDeliveryRef = (r) => (r || '').startsWith('DEL-');
 const isRideRef = (r) =>
-  (r || '').startsWith('RIDE-') || (r || '').startsWith('ride_') || (r || '').startsWith('ride_mixpay_');
+  (r || '').startsWith('RIDE-') ||
+  (r || '').startsWith('ride_') ||
+  (r || '').startsWith('ride_mixpay_');
 const isRechargeRef = (r) => norm(r).startsWith('recharge-');
 
 const MercadoPagoCallbackPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const ran = useRef(false);        // evita doble ejecución del effect en StrictMode
-  const navigated = useRef(false);  // evita dobles navegaciones en callbacks async
+  const ran = useRef(false);
+  const navigated = useRef(false);
 
   const { user, profile } = useAuth();
   const { completeLinking } = useMercadoPagoAuth();
@@ -34,19 +37,17 @@ const MercadoPagoCallbackPage = () => {
   const safeNavigate = (path) => {
     if (navigated.current) return;
     navigated.current = true;
-    navigate(path);
+    navigate(path, { replace: true });
   };
 
+  /* ------------------- Effect principal ------------------- */
   useEffect(() => {
-    if (ran.current) return; // evita doble ejecución por StrictMode
+    if (ran.current) return;
     ran.current = true;
 
     const params = new URLSearchParams(location.search);
-
     const code = params.get('code');
     const state = params.get('state');
-
-    // Mercado Pago puede usar distintos nombres
     const paymentStatus = params.get('status') || params.get('collection_status') || 'null';
     const externalRef = params.get('external_reference');
     const paymentId = params.get('payment_id') || params.get('collection_id');
@@ -64,12 +65,13 @@ const MercadoPagoCallbackPage = () => {
     }
 
     setStatus('error');
-    setMessage('Faltan parámetros en la URL para procesar la solicitud.');
-    toast({ title: 'Error', description: 'URL de callback inválida.', variant: 'destructive' });
+    setMessage('Faltan parámetros en la URL.');
+    toast({ title: 'Error', description: 'URL inválida de Mercado Pago.', variant: 'destructive' });
     setTimeout(() => safeNavigate(`/${profile?.user_type || 'passenger'}`), 3000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
+  /* ------------------- Vinculación de cuenta MP ------------------- */
   const handleAuthCallback = async (code, state) => {
     if (!user) {
       setStatus('error');
@@ -78,10 +80,10 @@ const MercadoPagoCallbackPage = () => {
     }
     if (user.id !== state) {
       setStatus('error');
-      setMessage('Error de seguridad. El estado no coincide. No se puede continuar.');
+      setMessage('Error de seguridad. El estado no coincide.');
       toast({
-        title: 'Error de Seguridad',
-        description: 'La solicitud de vinculación no es válida.',
+        title: 'Error de seguridad',
+        description: 'La solicitud no es válida.',
         variant: 'destructive',
       });
       return;
@@ -91,48 +93,51 @@ const MercadoPagoCallbackPage = () => {
 
     if (result.success) {
       setStatus('success');
-      setMessage('¡Cuenta vinculada con éxito! Serás redirigido en un momento.');
-      toast({ title: '¡Todo listo!', description: 'Tu cuenta de Mercado Pago se vinculó correctamente.' });
+      setMessage('¡Cuenta de Mercado Pago vinculada con éxito!');
+      toast({
+        title: '¡Todo listo!',
+        description: 'Tu cuenta se vinculó correctamente.',
+      });
     } else {
       setStatus('error');
-      setMessage(result.error || 'No se pudo completar la vinculación. Por favor, intentá de nuevo.');
-      toast({ title: 'Error de Vinculación', description: result.error, variant: 'destructive' });
+      setMessage(result.error || 'No se pudo completar la vinculación.');
+      toast({
+        title: 'Error de vinculación',
+        description: result.error,
+        variant: 'destructive',
+      });
     }
     setTimeout(() => safeNavigate(`/${profile?.user_type || 'passenger'}/payment-methods`), 2500);
   };
 
+  /* ------------------- Procesamiento de pago ------------------- */
   const handlePaymentCallback = async (paymentStatusRaw, externalRef, paymentId) => {
     const statusNorm = norm(paymentStatusRaw);
 
     try {
-      // Envíos — finalize en callback
+      // --- 🚚 Envíos ---
       if (isDeliveryRef(externalRef)) {
         const { data, error } = await supabase.rpc('finalize_mixed_payment_delivery', {
           p_reference_id: externalRef,
           p_payment_id: paymentId,
           p_mp_status: statusNorm,
         });
-
         if (error) throw new Error(error.message);
 
         if (data?.success) {
           setStatus('success');
           setMessage('¡Pago aprobado! Envío creado, buscando conductor…');
-          const id = data.delivery_id;
-          toast({ title: 'Pago aprobado', description: '¡Envío creado!' });
-          safeNavigate(`/tracking/package/${id}`);
-          return;
+          toast({ title: 'Pago aprobado', description: 'Envío confirmado correctamente.' });
+          return safeNavigate(`/tracking/package/${data.delivery_id}`);
         }
 
-        // cancelado/rechazado/null
         setStatus('error');
-        setMessage('Pago cancelado o no completado. No se realizó el cobro.');
+        setMessage('Pago cancelado o no completado.');
         toast({ title: 'Pago cancelado', description: 'No se realizó el cobro.' });
-        safeNavigate(`/${profile?.user_type || 'passenger'}`);
-        return;
+        return safeNavigate(`/${profile?.user_type || 'passenger'}`);
       }
 
-      // Viajes — usa finalize si existe; si no, fallback legacy
+      // --- 🚗 Viajes ---
       if (isRideRef(externalRef)) {
         try {
           const { data, error } = await supabase.rpc('finalize_mixed_payment_ride', {
@@ -144,44 +149,31 @@ const MercadoPagoCallbackPage = () => {
           if (data?.success) {
             setStatus('success');
             setMessage('¡Pago aprobado! Viaje creado, buscando conductor…');
-            const id = data.ride_id || data?.ride?.id;
-            toast({ title: 'Pago aprobado', description: '¡Viaje creado!' });
-            safeNavigate(`/tracking/${id}`);
-            return;
+            toast({ title: 'Pago aprobado', description: 'Viaje confirmado correctamente.' });
+            return safeNavigate(`/tracking/${data.ride_id || data?.ride?.id}`);
           }
         } catch {
-          // seguimos al fallback
+          // fallback legacy
         }
 
-        // Fallback legacy create_ride_from_mp_payment para referencias antiguas
         if (isApprovedStatus(statusNorm)) {
-          const { data: rideCreationResult, error: rideCreationError } = await supabase.rpc(
-            'create_ride_from_mp_payment',
-            { p_external_reference: externalRef }
-          );
-
-          if (rideCreationError || !rideCreationResult?.success) {
-            setStatus('error');
-            setMessage(rideCreationError?.message || rideCreationResult?.message || 'Error al crear el viaje.');
-            toast({ title: 'Error', description: 'No se pudo crear el viaje con el pago.', variant: 'destructive' });
-          } else {
-            setStatus('success');
-            const ride = rideCreationResult.ride;
-            setMessage('¡Viaje creado! Redirigiendo…');
-            safeNavigate(`/tracking/${ride.id}`);
-          }
-          return;
+          const { data, error } = await supabase.rpc('create_ride_from_mp_payment', {
+            p_external_reference: externalRef,
+          });
+          if (error || !data?.success) throw error || new Error('Error al crear el viaje.');
+          setStatus('success');
+          setMessage('¡Viaje creado! Redirigiendo…');
+          toast({ title: 'Viaje creado', description: 'Redirigiendo al seguimiento…' });
+          return safeNavigate(`/tracking/${data.ride.id}`);
         }
 
-        // cancelado/rechazado/null
         setStatus('error');
-        setMessage('Pago cancelado o no completado. No se realizó el cobro.');
+        setMessage('Pago cancelado o no completado.');
         toast({ title: 'Pago cancelado', description: 'No se realizó el cobro.' });
-        safeNavigate(`/${profile?.user_type || 'passenger'}`);
-        return;
+        return safeNavigate(`/${profile?.user_type || 'passenger'}`);
       }
 
-      // Recargas — intenta finalize; si falla, fallback a update directa
+      // --- 💰 Recargas ---
       if (isRechargeRef(externalRef)) {
         if (isApprovedStatus(statusNorm)) {
           let finalized = false;
@@ -206,40 +198,55 @@ const MercadoPagoCallbackPage = () => {
 
           await fetchWalletData();
           setStatus('success');
-          setMessage('¡Recarga acreditada en tu billetera!');
-          toast({ title: '¡Recarga exitosa!', description: 'El saldo se acreditó correctamente.' });
-          safeNavigate('/passenger/wallet');
-          return;
+          setMessage('¡Recarga acreditada correctamente!');
+          toast({
+            title: 'Recarga exitosa',
+            description: 'El saldo fue acreditado en tu billetera.',
+          });
+          return safeNavigate('/passenger/wallet');
         }
 
-        // recarga cancelada
         setStatus('error');
         setMessage('Recarga cancelada o no completada.');
-        toast({ title: 'Recarga no completada', description: `Estado: ${statusNorm}`, variant: 'destructive' });
-        safeNavigate('/passenger/wallet');
-        return;
+        toast({
+          title: 'Recarga no completada',
+          description: `Estado: ${statusNorm}`,
+          variant: 'destructive',
+        });
+        return safeNavigate('/passenger/wallet');
       }
 
-      // Referencia no reconocida
+      // --- 🔍 Fallback ---
       setStatus('error');
       setMessage('Referencia de pago no reconocida.');
-      toast({ title: 'Error', description: 'Referencia de pago no reconocida.', variant: 'destructive' });
-      safeNavigate(`/${profile?.user_type || 'passenger'}`);
+      toast({
+        title: 'Error',
+        description: 'Referencia no válida o vencida.',
+        variant: 'destructive',
+      });
+      return safeNavigate(`/${profile?.user_type || 'passenger'}`);
     } catch (e) {
       setStatus('error');
-      setMessage(e.message || 'Hubo un problema al procesar el pago.');
-      toast({ title: 'Hubo un problema', description: e.message, variant: 'destructive' });
+      setMessage(e.message || 'Ocurrió un problema al procesar el pago.');
+      toast({
+        title: 'Hubo un problema',
+        description: e.message,
+        variant: 'destructive',
+      });
       safeNavigate(`/${profile?.user_type || 'passenger'}`);
     }
   };
 
+  /* ------------------- UI ------------------- */
   const renderContent = () => {
     switch (status) {
       case 'processing':
         return (
           <>
             <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto" />
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-white mt-4">Procesando...</h1>
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-white mt-4">
+              Procesando...
+            </h1>
           </>
         );
       case 'success':
@@ -267,17 +274,20 @@ const MercadoPagoCallbackPage = () => {
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
-        className="text-center bg-white dark:bg-slate-800 p-8 rounded-lg shadow-lg w-full max-w-md"
+        className="text-center bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-lg w-full max-w-md border border-slate-200 dark:border-slate-700"
       >
         <img
           src="https://img.icons8.com/color/96/mercado-pago.png"
-          alt="MercadoPago"
+          alt="Mercado Pago"
           className="mx-auto mb-6"
         />
         {renderContent()}
         <p className="text-slate-600 dark:text-slate-400 mt-2">{message}</p>
         {status === 'error' && (
-          <Button onClick={() => safeNavigate(`/${profile?.user_type || 'passenger'}`)} className="mt-6">
+          <Button
+            onClick={() => safeNavigate(`/${profile?.user_type || 'passenger'}`)}
+            className="mt-6"
+          >
             Volver al inicio
           </Button>
         )}

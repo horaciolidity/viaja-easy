@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -7,99 +6,106 @@ const AuthContext = createContext(undefined);
 
 export const AuthProvider = ({ children }) => {
   const { toast } = useToast();
-
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const handleSession = useCallback(async (session) => {
+  /* ---------------------- 🔐 Manejo de sesión ---------------------- */
+  const handleSession = useCallback((session) => {
     setSession(session);
     setUser(session?.user ?? null);
     setLoading(false);
   }, []);
 
+  /* ---------------------- 🧭 Inicialización ---------------------- */
   useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      handleSession(session);
+    const initAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      handleSession(data?.session ?? null);
     };
+    initAuth();
 
-    getSession();
+    // Escucha cambios en la sesión (login, logout, refresh, etc.)
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleSession(session);
+    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        handleSession(session);
-      }
-    );
-
-    return () => subscription.unsubscribe();
+    return () => {
+      listener?.subscription?.unsubscribe?.();
+    };
   }, [handleSession]);
 
-  const signUp = useCallback(async (email, password, options) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options,
-    });
+  /* ---------------------- ✉️ Registro ---------------------- */
+  const signUp = useCallback(
+    async (email, password, options = {}) => {
+      const { error } = await supabase.auth.signUp({ email, password, options });
+      if (error) {
+        toast({
+          variant: 'destructive',
+          title: 'Error al registrarte',
+          description: error.message || 'Ocurrió un problema durante el registro.',
+        });
+      } else {
+        toast({
+          title: 'Registro exitoso',
+          description: 'Revisa tu correo electrónico para confirmar tu cuenta.',
+        });
+      }
+      return { error };
+    },
+    [toast]
+  );
 
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Sign up Failed",
-        description: error.message || "Something went wrong",
-      });
-    }
+  /* ---------------------- 🔑 Inicio de sesión ---------------------- */
+  const signIn = useCallback(
+    async (email, password) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        toast({
+          variant: 'destructive',
+          title: 'Error al iniciar sesión',
+          description: error.message || 'Verifica tus credenciales e intenta nuevamente.',
+        });
+      }
+      return { error };
+    },
+    [toast]
+  );
 
-    return { error };
-  }, [toast]);
-
-  const signIn = useCallback(async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Sign in Failed",
-        description: error.message || "Something went wrong",
-      });
-    }
-
-    return { error };
-  }, [toast]);
-
+  /* ---------------------- 🚪 Cerrar sesión ---------------------- */
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
-
     if (error) {
       toast({
-        variant: "destructive",
-        title: "Sign out Failed",
-        description: error.message || "Something went wrong",
+        variant: 'destructive',
+        title: 'Error al cerrar sesión',
+        description: error.message || 'Intenta nuevamente más tarde.',
       });
     }
-
     return { error };
   }, [toast]);
 
-  const value = useMemo(() => ({
-    user,
-    session,
-    loading,
-    signUp,
-    signIn,
-    signOut,
-  }), [user, session, loading, signUp, signIn, signOut]);
+  /* ---------------------- 📦 Valor del contexto ---------------------- */
+  const value = useMemo(
+    () => ({
+      user,
+      session,
+      loading,
+      signUp,
+      signIn,
+      signOut,
+    }),
+    [user, session, loading, signUp, signIn, signOut]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+/* ---------------------- 🧩 Hook de acceso ---------------------- */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth debe usarse dentro de un AuthProvider');
   }
   return context;
 };

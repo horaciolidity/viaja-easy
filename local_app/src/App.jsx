@@ -1,28 +1,34 @@
-
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { Toaster } from '@/components/ui/toaster';
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { LocationProvider } from '@/contexts/LocationContext';
-import { RideProvider } from '@/contexts/RideContext';
-import { ChatProvider } from '@/contexts/ChatContext';
-import { PaymentProvider } from '@/contexts/PaymentContext';
-import { NetworkStatusProvider } from '@/contexts/NetworkStatusContext';
-import { NotificationProvider } from '@/contexts/NotificationContext';
-import { AudioProvider } from '@/contexts/AudioContext';
-import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
-import { HourlyRideProvider } from '@/contexts/HourlyRideContext';
-import { ScheduledRideProvider } from '@/contexts/ScheduledRideContext';
 import { supabase } from '@/lib/customSupabaseClient';
 
+/* ---------------- Contextos ---------------- */
+import { NetworkStatusProvider } from '@/contexts/NetworkStatusContext';
+import { AudioProvider } from '@/contexts/AudioContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
+import { LocationProvider } from '@/contexts/LocationContext';
+import { PaymentProvider } from '@/contexts/PaymentContext';
+import { HourlyRideProvider } from '@/contexts/HourlyRideContext';
+import { ScheduledRideProvider } from '@/contexts/ScheduledRideContext';
+import { ChatProvider } from '@/contexts/ChatContext';
+import { RideProvider } from '@/contexts/RideContext';
+
+/* ---------------- Componentes globales ---------------- */
 import NetworkStatusBanner from '@/components/NetworkStatusBanner';
 import AppLoadingScreen from '@/components/AppLoadingScreen';
 import MaintenanceModePage from '@/pages/MaintenanceModePage.jsx';
-import DriverLayout from '@/layouts/DriverLayout';
-import PassengerLayout from '@/layouts/PassengerLayout';
 import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
+/* ---------------- Layouts ---------------- */
+import DriverLayout from '@/layouts/DriverLayout';
+import PassengerLayout from '@/layouts/PassengerLayout';
+
+/* ---------------- Páginas principales ---------------- */
 import LandingPage from '@/pages/LandingPage.jsx';
 import LoginPage from '@/pages/LoginPage.jsx';
 import RegisterPage from '@/pages/RegisterPage.jsx';
@@ -40,6 +46,7 @@ import MercadoPagoCallbackPage from '@/pages/MercadoPagoCallbackPage.jsx';
 import KycDniSelfie from '@/components/KycDniSelfie.jsx';
 import FaceVerifyForm from '@/components/FaceVerifyForm.jsx';
 
+/* ---------------- Páginas de funcionalidades ---------------- */
 import SharedRidePage from '@/pages/appfeatures/SharedRidePage.jsx';
 import ScheduleRidePage from '@/pages/appfeatures/ScheduleRidePage.jsx';
 import HourlyRidePage from '@/pages/appfeatures/HourlyRidePage.jsx';
@@ -50,6 +57,7 @@ import RideDetailPage from '@/pages/appfeatures/RideDetailPage.jsx';
 import RideHistoryPage from '@/pages/appfeatures/RideHistoryPage.jsx';
 import PackageTracking from '@/pages/PackageTracking.jsx';
 
+/* ---------------- Páginas de administración ---------------- */
 import AdminOverviewTab from '@/components/admin/AdminOverviewTab.jsx';
 import AdminUsersPage from '@/pages/admin/AdminUsersPage.jsx';
 import AdminDriversPage from '@/pages/admin/AdminDriversPage.jsx';
@@ -80,6 +88,7 @@ import UserDocumentsAdminPage from '@/pages/admin/UserDocumentsAdminPage.jsx';
 import AdminFacialVerificationPage from '@/pages/admin/AdminFacialVerificationPage.jsx';
 import AdminDebtsPage from '@/pages/admin/AdminDebtsPage.jsx';
 
+/* ---------------- Páginas de conductor ---------------- */
 import DriverVehiclePage from '@/pages/driver/DriverVehiclePage.jsx';
 import DriverEarningsPage from '@/pages/driver/DriverEarningsPage.jsx';
 import DriverHistoryPage from '@/pages/driver/DriverHistoryPage.jsx';
@@ -88,33 +97,30 @@ import DriverHourlyRidesPage from '@/pages/driver/DriverHourlyRidesPage.jsx';
 import DriverScheduledRidesPage from '@/pages/driver/DriverScheduledRidesPage.jsx';
 import DriverAssistancePage from '@/pages/driver/DriverAssistancePage.jsx';
 
+/* ---------------- Páginas de pasajero ---------------- */
 import PassengerMyRidesPage from '@/pages/passenger/PassengerMyRidesPage.jsx';
 import PassengerAssistancePage from '@/pages/passenger/PassengerAssistancePage.jsx';
 import PassengerNotificationsPage from '@/pages/passenger/PassengerNotificationsPage.jsx';
 
+/* ---------------- Otras páginas ---------------- */
 import GeneralSettingsPage from '@/pages/SettingsPage.jsx';
 import NotificationsPage from '@/pages/NotificationsPage.jsx';
-import { Helmet } from 'react-helmet-async';
 
+/* -------------------------------------------------------------------------- */
+/* 🧩 Rutas protegidas y auxiliares */
+/* -------------------------------------------------------------------------- */
 
 const ProtectedRoute = ({ children, allowedUserTypes }) => {
   const { user, profile, loading, isImpersonating } = useAuth();
   const { settings, loading: settingsLoading } = useSettings();
 
-  if (loading || settingsLoading) {
-    return <AppLoadingScreen />;
-  }
+  if (loading || settingsLoading) return <AppLoadingScreen />;
+  if (!user || !profile) return <Navigate to="/login" replace />;
 
-  if (!user || !profile) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (settings.appSettings.maintenance_mode && profile.user_type !== 'admin' && !isImpersonating) {
+  if (settings.appSettings.maintenance_mode && profile.user_type !== 'admin' && !isImpersonating)
     return <Navigate to="/maintenance" replace />;
-  }
 
   const userType = profile.user_type;
-
   if (allowedUserTypes && !allowedUserTypes.includes(userType)) {
     if (userType === 'admin' && !isImpersonating) return <Navigate to="/admin" replace />;
     if (userType === 'driver') return <Navigate to="/driver" replace />;
@@ -122,20 +128,16 @@ const ProtectedRoute = ({ children, allowedUserTypes }) => {
     return <Navigate to="/" replace />;
   }
 
-  const unverifiedButAllowedPaths = ['/upload-documents', '/passenger', '/driver', '/driver/shared-rides'];
-  if (!profile.verified && profile.user_type !== 'admin' && !unverifiedButAllowedPaths.includes(window.location.pathname)) {
+  const allowedPaths = ['/upload-documents', '/passenger', '/driver', '/driver/shared-rides'];
+  if (!profile.verified && profile.user_type !== 'admin' && !allowedPaths.includes(window.location.pathname))
     return <Navigate to="/upload-documents" replace />;
-  }
 
   return children;
 };
 
 const AuthenticatedRedirect = ({ children }) => {
   const { user, profile, loading, isImpersonating } = useAuth();
-
-  if (loading) {
-    return <AppLoadingScreen />;
-  }
+  if (loading) return <AppLoadingScreen />;
 
   if (user && profile) {
     if (profile.user_type === 'passenger') return <Navigate to="/passenger" replace />;
@@ -157,35 +159,29 @@ function AdminShell() {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* 🧭 Rutas principales */
+/* -------------------------------------------------------------------------- */
 const AppRoutes = () => {
   const { user, profile, isImpersonating } = useAuth();
   const { settings, loading: settingsLoading } = useSettings();
 
   useEffect(() => {
-    if (!user || profile?.user_type !== 'admin' || isImpersonating) {
-      return;
-    }
+    if (!user || profile?.user_type !== 'admin' || isImpersonating) return;
 
     const interval = setInterval(async () => {
       if (!navigator.onLine) return;
       try {
         const { error } = await supabase.rpc('cancel_stale_rides');
-        if (error) {
-          if (!error.message.includes('Failed to fetch')) {
-            console.error('Error executing cancel_stale_rides RPC:', error.message);
-          }
-        }
-      } catch (error) {
-        // Ignore fetch errors
-      }
+        if (error && !error.message.includes('Failed to fetch'))
+          console.error('Error ejecutando cancel_stale_rides:', error.message);
+      } catch {}
     }, 60000);
 
     return () => clearInterval(interval);
   }, [user, profile, isImpersonating]);
 
-  if (settingsLoading) {
-    return <AppLoadingScreen />;
-  }
+  if (settingsLoading) return <AppLoadingScreen />;
 
   if (settings.appSettings.maintenance_mode && profile?.user_type !== 'admin' && !isImpersonating) {
     return (
@@ -202,16 +198,16 @@ const AppRoutes = () => {
       {isImpersonating && <ImpersonationBanner />}
       <Routes>
         <Route path="/" element={<AuthenticatedRedirect><LandingPage /></AuthenticatedRedirect>} />
-
         <Route path="/login" element={<AuthenticatedRedirect><LoginPage /></AuthenticatedRedirect>} />
         <Route path="/register" element={<AuthenticatedRedirect><RegisterPage /></AuthenticatedRedirect>} />
         <Route path="/verification" element={<VerificationPage />} />
+
         <Route path="/mercadopago/callback" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver']}><MercadoPagoCallbackPage /></ProtectedRoute>} />
         <Route path="/kyc" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver', 'admin']}><KycDniSelfie /></ProtectedRoute>} />
         <Route path="/face-verify" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver', 'admin']}><FaceVerifyForm /></ProtectedRoute>} />
-
         <Route path="/upload-documents" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver']}><DocumentUploadPage /></ProtectedRoute>} />
 
+        {/* Pasajero */}
         <Route path="/passenger" element={<ProtectedRoute allowedUserTypes={['passenger']}><PassengerLayout /></ProtectedRoute>}>
           <Route index element={<PassengerDashboard />} />
           <Route path="my-rides" element={<PassengerMyRidesPage />} />
@@ -224,14 +220,7 @@ const AppRoutes = () => {
           <Route path="assistance" element={<PassengerAssistancePage />} />
         </Route>
 
-        <Route path="/booking" element={<ProtectedRoute allowedUserTypes={['passenger']}><RideBookingPage /></ProtectedRoute>} />
-        <Route path="/schedule-ride" element={<ProtectedRoute allowedUserTypes={['passenger']}><ScheduleRidePage /></ProtectedRoute>} />
-        <Route path="/hourly-ride" element={<ProtectedRoute allowedUserTypes={['passenger']}><HourlyRidePage /></ProtectedRoute>} />
-        <Route path="/services" element={<ProtectedRoute allowedUserTypes={['passenger']}><ServicesPage /></ProtectedRoute>} />
-
-        <Route path="/shared-rides-offers" element={<ProtectedRoute allowedUserTypes={['passenger']}><SharedRidesOffersPage /></ProtectedRoute>} />
-        <Route path="/packages" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver']}><PackageDeliveryPage /></ProtectedRoute>} />
-
+        {/* Conductor */}
         <Route path="/driver" element={<ProtectedRoute allowedUserTypes={['driver']}><DriverLayout /></ProtectedRoute>}>
           <Route index element={<DriverDashboard />} />
           <Route path="shared-rides" element={<SharedRidePage />} />
@@ -249,12 +238,14 @@ const AppRoutes = () => {
           <Route path="assistance" element={<DriverAssistancePage />} />
         </Route>
 
+        {/* Generales */}
         <Route path="/tracking/:rideId" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver']}><RideTracking /></ProtectedRoute>} />
         <Route path="/tracking/package/:packageId" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver']}><PackageTracking /></ProtectedRoute>} />
         <Route path="/chat/:rideId" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver']}><ChatPage /></ProtectedRoute>} />
         <Route path="/ride/:type/:id" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver', 'admin']}><RideDetailPage /></ProtectedRoute>} />
         <Route path="/ride-history/:type/:id" element={<ProtectedRoute allowedUserTypes={['passenger', 'driver', 'admin']}><RideHistoryPage /></ProtectedRoute>} />
 
+        {/* Admin */}
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route path="/admin" element={<ProtectedRoute allowedUserTypes={['admin']}><AdminShell /></ProtectedRoute>} >
           <Route index element={<Navigate to="overview" replace />} />
@@ -293,41 +284,46 @@ const AppRoutes = () => {
   );
 };
 
-const App = () => {
-  return (
-    <>
-      <Helmet>
-        <title>ViajaFácil</title>
-        <meta name="description" content="Tu solución de movilidad urbana. Viajes rápidos, seguros y al mejor precio." />
-      </Helmet>
-      <Router>
-        <NetworkStatusProvider>
+/* -------------------------------------------------------------------------- */
+/* 🚀 App principal con Providers en orden optimizado */
+/* -------------------------------------------------------------------------- */
+const App = () => (
+  <>
+    <Helmet>
+      <title>ViajaFácil</title>
+      <meta
+        name="description"
+        content="Tu solución de movilidad urbana. Viajes rápidos, seguros y al mejor precio."
+      />
+    </Helmet>
+
+    <Router>
+      <NetworkStatusProvider>
+        <AudioProvider>
           <AuthProvider>
             <SettingsProvider>
-              <AudioProvider>
-                <NotificationProvider>
-                  <LocationProvider>
-                    <PaymentProvider>
-                      <HourlyRideProvider>
-                        <ScheduledRideProvider>
-                          <ChatProvider>
-                            <RideProvider>
-                              <AppRoutes />
-                              <Toaster />
-                            </RideProvider>
-                          </ChatProvider>
-                        </ScheduledRideProvider>
-                      </HourlyRideProvider>
-                    </PaymentProvider>
-                  </LocationProvider>
-                </NotificationProvider>
-              </AudioProvider>
+              <NotificationProvider>
+                <LocationProvider>
+                  <PaymentProvider>
+                    <HourlyRideProvider>
+                      <ScheduledRideProvider>
+                        <ChatProvider>
+                          <RideProvider>
+                            <AppRoutes />
+                            <Toaster />
+                          </RideProvider>
+                        </ChatProvider>
+                      </ScheduledRideProvider>
+                    </HourlyRideProvider>
+                  </PaymentProvider>
+                </LocationProvider>
+              </NotificationProvider>
             </SettingsProvider>
           </AuthProvider>
-        </NetworkStatusProvider>
-      </Router>
-    </>
-  );
-};
+        </AudioProvider>
+      </NetworkStatusProvider>
+    </Router>
+  </>
+);
 
 export default App;
